@@ -1,0 +1,110 @@
+QUESTION 1: Monthly Encounters by Specialty
+SQL Query:
+SELECT
+    DATE_FORMAT(e.encounter_date, '%Y-%m') AS encounter_month,
+    s.specialty_name,
+    e.encounter_type,
+    COUNT(e.encounter_id) AS total_encounters,
+    COUNT(DISTINCT e.patient_id) AS unique_patients
+FROM encounters e
+         JOIN providers p ON e.provider_id = p.provider_id
+         JOIN specialties s ON p.specialty_id = s.specialty_id
+GROUP BY encounter_month, s.specialty_name
+ORDER BY encounter_month DESC, total_encounters DESC;
+
+Schema Analysis:
+Tables joined:
+ - encounters
+ - providers
+ - specialties
+Number of joins: 2
+Performance:
+Execution time: 0.000154 seconds
+Estimated rows scanned: 11 rowz
+Bottleneck Identified:
+ The `ANALYZE` output shows a "temporary_table" containing a "filesort", which is then passed to another "filesort".
+ The first filesort is required to handle the GROUP BY (because the data isn't naturally ordered by the formatted date
+ and specialty name). The second filesort is required for the ORDER BY because it sorts by an aggregate value
+ (total_encounters DESC). On large datasets, these operations will move from memory to disk, causing a massive
+ performance hit. Also, The engine is grouping by DATE_FORMAT(e.encounter_date, '%Y-%m'). Because this is a function,
+ the database cannot use an index on encounter_date to speed up the grouping process. It must perform the calculation
+ for every single row. Finally, The "Specialty" is not on the encounter record. The engine is forced to perform a
+ Nested Loop join to reach the specialties table. In a high-concurrency environment, these repeated lookups increase
+ CPU cycles significantly and can lead to performance issues.
+
+
+
+Question 2: Top Diagnosis-Procedure Pairs
+SQL Query:
+SELECT d.icd10_code,
+       p.cpt_code,
+       COUNT(*) AS pair_count
+FROM encounter_diagnoses ed
+         JOIN diagnoses d ON ed.diagnosis_id = d.diagnosis_id
+         JOIN encounter_procedures ep ON ed.encounter_id = ep.encounter_id
+         JOIN procedures p ON ep.procedure_id = p.procedure_id
+GROUP BY d.icd10_code, p.cpt_code
+ORDER BY pair_count DESC
+LIMIT 10;
+
+Schema Analysis:
+Tables joined:
+  - encounter_diagnoses
+  - encounter_procedures
+  - diagnoses
+  - procedures
+Number of joins: 3
+Performance:
+Execution time: 0.000117 seconds
+Estimated rows scanned: 25 rows
+Bottleneck Identified:
+The ANALYZE output shows a full table scan (access_type: "ALL") on the encounter_procedures table, which acts as
+the starting point. More importantly, joining two separate junction tables (encounter_diagnoses and encounter_procedures)
+on encounter_id causes a row explosion. If an encounter has multiple diagnoses and multiple procedures, the database
+generates a Cartesian product of those rows before aggregating. Additionally, the engine is forced to use a temporary
+table and a filesort with a priority queue to group the results and sort the final pair_count. As the dataset grows,
+this exponential row explosion combined with temporary tables will severely degrade performance.
+
+
+
+
+Question 3: 30-Day Readmission Rate
+SQL Query:
+SELECT s.specialty_name,
+       COUNT(DISTINCT e1.encounter_id)                                           AS initial_inpatient_discharges,
+       COUNT(DISTINCT e2.encounter_id)                                           AS readmissions,
+       (COUNT(DISTINCT e2.encounter_id) / COUNT(DISTINCT e1.encounter_id)) * 100 AS readmission_rate
+FROM encounters e1
+         JOIN providers pr ON e1.provider_id = pr.provider_id
+         JOIN specialties s ON pr.specialty_id = s.specialty_id
+         LEFT JOIN encounters e2 ON e1.patient_id = e2.patient_id
+    AND e2.encounter_date > e1.discharge_date
+    AND e2.encounter_date <= DATE_ADD(e1.discharge_date, INTERVAL 30 DAY)
+WHERE e1.encounter_type = 'Inpatient'
+GROUP BY s.specialty_name;
+
+Schema Analysis:
+Tables joined:
+  - encounters
+  - providers
+  - specialties
+  - encounters
+Number of joins: 3
+
+Performance:
+Execution time: 0.000132 seconds
+Estimated rows scanned: 10 rows
+
+Bottleneck Identified:
+The ANALYZE output shows a temporary table and filesort are required to group the results by specialty name.
+The primary bottleneck is the self-join on the encounters table to detect readmissions. For every inpatient encounter,
+the database must scan subsequent encounters for the same patient. Furthermore, the complex date range
+condition (e2.encounter_date <= e1.discharge_date + interval 30 day) is evaluated as a dynamic trigger
+condition during the join. This prevents optimal index usage and forces row-by-row calculations, which is extremely
+CPU-intensive and scales poorly as patient history grows.
+
+
+
+Question 4: Revenue by Specialty & Month
+
+
