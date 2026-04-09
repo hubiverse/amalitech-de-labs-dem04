@@ -1,0 +1,94 @@
+Question 1: Fact Table Grain
+Decision 1: Fact Table Grain
+Choice: Option A: One row per encounter
+Why: The primary business process being measured is the patient encounter. Queries 1, 3, and 4 all aggregate data at
+the encounter level (monthly encounters, inpatient readmissions, and total billing per encounter). Choosing Option A
+establishes a clear, consistent grain for the fact_encounters table. If we chose Option B or C, we would artificially
+inflate the row count (row explosion) and make calculating encounter-level totals (like revenue or unique patients)
+much more difficult and prone to double-counting errors
+
+
+
+Decision 2: Dimension Tables
+- dim_date
+    - date_key
+    - full_date
+    - year
+    - month
+    - month_name
+    - quarter
+    - day_of_week
+    - is_weekend
+
+- dim_patient
+    - patient_key
+    - patient_id
+    - first_name
+    - last_name
+    - dob
+    - gender
+    - mrn
+
+- dim_provider
+    - provider_key
+    - provider_id
+    - first_name
+    - last_name
+    - credential
+
+- dim_specialty
+    - specialty_key
+    - specialty_id
+    - specialty_name
+    - specialty_code
+
+- dim_department
+    - department_key
+    - department_id
+    - department_name
+    - floor
+    - capacity
+
+- dim_encounter_type
+    - encounter_type_key
+    - encounter_type_name
+
+- dim_diagnosis
+    - diagnosis_key
+    - icd10_code
+    - icd10_description.
+
+- dim_procedure
+    - procedure_key
+    - cpt_code
+    - cpt_description
+
+
+
+Decision 3: Pre-Aggregated Metrics
+Storing pre-calculated metrics directly in the fact table shifts the heavy lifting from read-time to write-time. That
+is, during read-time, queries can simply pull these pre-aggregated values without needing to perform expensive
+calculations or joins. It also ensures computations are done in a single place during ETL, which promotes consistency
+and reduces the risk of errors in calculations across different queries.
+
+- diagnosis_count & procedure_count: Useful for quick clinical complexity reporting without having to count rows in
+junction tables.
+
+- total_claim_amount & total_allowed_amount: By pulling these in from the billing table during ETL, we eliminate the
+need to join a separate billing table entirely (Solves Q4).
+
+- readmission_30_day_flag: Pre-calculating whether an encounter resulted in a 30-day readmission
+during the ETL pipeline completely eliminates the massive self-join bottleneck identified in Q3.
+
+- length_of_stay_days: Pre-calculating the date difference between admission and discharge avoids runtime date math.
+
+
+
+Decision 4: Bridge Tables
+CHOICE: Yes, we will use Bridge Tables (bridge_encounter_diagnosis and bridge_encounter_procedure).
+WHY: Healthcare encounters inherently have a many-to-many relationship with diagnoses and procedures.
+If we put these directly into the main fact table, we would violate our grain (Option A) and cause a
+Cartesian product (row explosion) just like we saw in Q2. By using Bridge Tables, the fact table safely remains
+at one row per encounter. When we need to analyze diagnoses or procedures, we can join through the bridge tables using
+fast, indexed surrogate keys, keeping the dimensional model clean and preventing double-counting of revenue or patient
+metrics.
