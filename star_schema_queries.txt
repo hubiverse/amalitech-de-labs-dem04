@@ -1,0 +1,111 @@
+QUESTION 1: Monthly Encounters by Specialty
+
+SQL Query (Star Schema):
+
+SELECT d.year,
+       d.month_name,
+       s.specialty_name,
+       t.type_name                   AS encounter_type,
+       COUNT(f.encounter_key)        AS total_encounters,
+       COUNT(DISTINCT f.patient_key) AS unique_patients
+FROM fact_encounters f
+         JOIN dim_date d ON f.date_key = d.date_key
+         JOIN dim_specialty s ON f.specialty_key = s.specialty_key
+         JOIN dim_encounter_type t ON f.encounter_type_key = t.encounter_type_key
+GROUP BY d.year, d.month, d.month_name, s.specialty_name, t.type_name
+ORDER BY d.year DESC, d.month DESC, total_encounters DESC;
+
+Execution time estimate: 0.166 ms vs. 0.201 ms original
+
+Improvement factor: 1.2x faster on sample data
+
+Explanation:
+The query is faster because it uses highly optimized primary key lookups (eq_ref) for all dimension joins. It groups
+natively by integer columns like year and month instead of forcing the database to run the CPU-heavy DATE_FORMAT
+function on every single row. Additionally, connecting the specialty directly to the fact table bypasses the need to
+join through the provider table entirely, flattening the hierarchy and drastically reducing database overhead.
+
+=====================================================================================================
+
+QUESTION 2: Top Diagnosis-Procedure Pairs
+
+SQL Query (Star Schema):
+SELECT dd.icd10_code,
+       dp.cpt_code,
+       COUNT(f.encounter_key) AS pair_count
+FROM fact_encounters f
+         JOIN bridge_encounter_diagnoses bed ON f.encounter_key = bed.encounter_key
+         JOIN dim_diagnosis dd ON bed.diagnosis_key = dd.diagnosis_key
+         JOIN bridge_encounter_procedures bep ON f.encounter_key = bep.encounter_key
+         JOIN dim_procedure dp ON bep.procedure_key = dp.procedure_key
+GROUP BY dd.icd10_code, dp.cpt_code
+ORDER BY pair_count DESC
+LIMIT 10;
+
+Execution time estimate: 0.158 ms vs. 0.229 ms original
+
+Improvement factor: 1.4x faster on sample data
+
+Explanation:
+While finding pairs inherently requires creating localized combinations within an encounter, the database now executes
+this using narrow, highly optimized integer surrogate keys instead of scanning unindexed data. The execution plan shows
+the database using rapid eq_ref primary key lookups for the fact and dimension tables. Because the heavy lifting is
+done entirely on these integer keys, the large text descriptions (icd10_code and cpt_code) only need to be fetched at
+the very end of the execution plan, significantly reducing memory and CPU overhead.
+
+===============================================================================================================
+
+QUESTION 3: 30-Day Readmission Rate
+
+SQL Query (Star Schema):
+
+SELECT s.specialty_name,
+       COUNT(f.encounter_key)                                          AS initial_inpatient_discharges,
+       SUM(f.readmission_30_day_flag)                                  AS readmissions,
+       (SUM(f.readmission_30_day_flag) / COUNT(f.encounter_key)) * 100 AS readmission_rate
+FROM fact_encounters f
+         JOIN dim_specialty s ON f.specialty_key = s.specialty_key
+         JOIN dim_encounter_type t ON f.encounter_type_key = t.encounter_type_key
+WHERE t.type_name = 'Inpatient'
+GROUP BY s.specialty_name;
+
+Execution time estimate: 0.165 ms vs. 0.332 ms original
+
+Improvement factor: 2.0x faster on sample data
+
+Explanation:
+The massive performance gain comes from completely eliminating the costly self-join on the encounters table. Instead of
+forcing the database to compare admission and discharge dates across rows at query time, the complex logic was
+pre-calculated during the ETL process into a simple readmission_30_day_flag. The query now performs a straightforward
+SUM() arithmetic operation using fast primary key lookups, bypassing heavy date math entirely.
+
+
+============================================================================================================
+
+
+QUESTION 4: Revenue by Specialty & Month
+
+SQL Query (Star Schema):
+code SQL
+
+SELECT
+    d.year,
+    d.month_name,
+    s.specialty_name,
+    SUM(f.total_allowed_amount) AS total_revenue
+FROM fact_encounters f
+JOIN dim_date d ON f.date_key = d.date_key
+JOIN dim_specialty s ON f.specialty_key = s.specialty_key
+GROUP BY d.year, d.month, d.month_name, s.specialty_name
+ORDER BY d.year DESC, d.month DESC, total_revenue DESC;
+
+Execution time estimate: 0.163 ms vs. 0.185 ms original
+
+Improvement factor: 1.1x faster on sample data
+
+Explanation:
+The query is faster because we significantly reduced the relational join depth. By rolling the total_allowed_amount
+metric directly into the fact table during the ETL process, we completely bypassed the need to join the billing and
+providers tables. The database now performs highly optimized eq_ref primary key lookups across just three tables.
+Furthermore, querying pre-extracted integer date columns directly from the date dimension eliminates the need to
+execute the CPU-intensive DATE_FORMAT function on every row during the grouping phase.
