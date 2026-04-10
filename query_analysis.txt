@@ -19,7 +19,7 @@ Tables joined:
  - specialties
 Number of joins: 2
 Performance:
-Execution time: 0.000154 seconds
+Execution time:  0.182157617 ms
 Estimated rows scanned: 11 rowz
 Bottleneck Identified:
  The `ANALYZE` output shows a "temporary_table" containing a "filesort", which is then passed to another "filesort".
@@ -55,7 +55,7 @@ Tables joined:
   - procedures
 Number of joins: 3
 Performance:
-Execution time: 0.000117 seconds
+Execution time: 0.172044057 ms
 Estimated rows scanned: 25 rows
 Bottleneck Identified:
 The ANALYZE output shows a full table scan (access_type: "ALL") on the encounter_procedures table, which acts as
@@ -92,7 +92,7 @@ Tables joined:
 Number of joins: 3
 
 Performance:
-Execution time: 0.000132 seconds
+Execution time: 0.269523338 ms
 Estimated rows scanned: 10 rows
 
 Bottleneck Identified:
@@ -104,7 +104,34 @@ condition during the join. This prevents optimal index usage and forces row-by-r
 CPU-intensive and scales poorly as patient history grows.
 
 
-
 Question 4: Revenue by Specialty & Month
+SQL Query:
+SELECT DATE_FORMAT(b.claim_date, '%Y-%m') AS billing_month,
+       s.specialty_name,
+       SUM(b.allowed_amount)              AS total_revenue
+FROM billing b
+         JOIN encounters e ON b.encounter_id = e.encounter_id
+         JOIN providers p ON e.provider_id = p.provider_id
+         JOIN specialties s ON p.specialty_id = s.specialty_id
+GROUP BY billing_month, s.specialty_name
+ORDER BY billing_month DESC, total_revenue DESC;
 
+Schema Analysis:
+Tables joined:
+  - billing
+  - encounters
+  - providers
+  - specialties
+Number of joins: 3
 
+Performance:
+Execution time: 0.275702866 ms
+Estimated rows scanned: 8 rows
+
+Bottleneck Identified:
+The ANALYZE output shows a full table scan (access_type: "ALL") on the billing table. Because the query groups by
+DATE_FORMAT(b.claim_date, '%Y-%m'), the database cannot use an index on the date column, forcing it to evaluate the
+function for every row. Furthermore, the query requires a deep join chain across four tables just to connect a billing
+amount to a specialty name. The engine uses nested loops to traverse this path, followed by a temporary table and
+filesort to handle the grouping and ordering. In a large dataset, this deep relational traversal combined with full
+table scans will cause significant performance issues.

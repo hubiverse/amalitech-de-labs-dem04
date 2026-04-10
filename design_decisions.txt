@@ -28,6 +28,7 @@ Decision 2: Dimension Tables
     - dob
     - gender
     - mrn
+    - age_group
 
 - dim_provider
     - provider_key
@@ -35,6 +36,7 @@ Decision 2: Dimension Tables
     - first_name
     - last_name
     - credential
+    - specialty_name
 
 - dim_specialty
     - specialty_key
