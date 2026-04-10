@@ -19,7 +19,7 @@ Tables joined:
  - specialties
 Number of joins: 2
 Performance:
-Execution time:  0.182157617 ms
+Execution time: 0.2011 ms
 Estimated rows scanned: 11 rowz
 Bottleneck Identified:
  The `ANALYZE` output shows a "temporary_table" containing a "filesort", which is then passed to another "filesort".
@@ -32,7 +32,7 @@ Bottleneck Identified:
  Nested Loop join to reach the specialties table. In a high-concurrency environment, these repeated lookups increase
  CPU cycles significantly and can lead to performance issues.
 
-
+================================================================================
 
 Question 2: Top Diagnosis-Procedure Pairs
 SQL Query:
@@ -55,7 +55,7 @@ Tables joined:
   - procedures
 Number of joins: 3
 Performance:
-Execution time: 0.172044057 ms
+Execution time: 0.2294 ms
 Estimated rows scanned: 25 rows
 Bottleneck Identified:
 The ANALYZE output shows a full table scan (access_type: "ALL") on the encounter_procedures table, which acts as
@@ -65,8 +65,7 @@ generates a Cartesian product of those rows before aggregating. Additionally, th
 table and a filesort with a priority queue to group the results and sort the final pair_count. As the dataset grows,
 this exponential row explosion combined with temporary tables will severely degrade performance.
 
-
-
+====================================================================================================
 
 Question 3: 30-Day Readmission Rate
 SQL Query:
@@ -92,7 +91,7 @@ Tables joined:
 Number of joins: 3
 
 Performance:
-Execution time: 0.269523338 ms
+Execution time: 0.3321 ms
 Estimated rows scanned: 10 rows
 
 Bottleneck Identified:
@@ -103,6 +102,7 @@ condition (e2.encounter_date <= e1.discharge_date + interval 30 day) is evaluate
 condition during the join. This prevents optimal index usage and forces row-by-row calculations, which is extremely
 CPU-intensive and scales poorly as patient history grows.
 
+=======================================================================================================================
 
 Question 4: Revenue by Specialty & Month
 SQL Query:
@@ -125,7 +125,7 @@ Tables joined:
 Number of joins: 3
 
 Performance:
-Execution time: 0.275702866 ms
+Execution time: 0.1857 ms
 Estimated rows scanned: 8 rows
 
 Bottleneck Identified:

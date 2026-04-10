@@ -1,0 +1,62 @@
+1. Dimension Load Logic
+
+  - Populating dim_patient:
+    Extract new and updated rows from the OLTP patients table. Map the OLTP patient_id to the natural key column.
+    Calculate the age_group dynamically during the extraction by comparing the date_of_birth to the current date, then
+    insert the row and generate a new surrogate patient_key.
+
+  - Populating dim_date (One-time load):
+    Use a Python script or a recursive SQL script to generate a continuous sequence of dates for a 50-year
+    range (e.g., 2000 to 2050). Extract the year, month, quarter, and day name using standard date functions. Evaluate
+    if the day is Saturday or Sunday to set the is_weekend boolean flag. Run this execution exactly once.
+
+  - Handling updates to dimensions (Slowly Changing Dimensions):
+    Use Type 1 SCD (Overwrite) for typo corrections (e.g., fixing a misspelled patient name). Use Type 2 SCD (Add new
+    row) for tracked historical changes (e.g., if a provider changes their specialty). For Type 2, insert a new row
+    with a new surrogate key so old encounters remain tied to the old specialty, while new encounters tie to the new
+    specialty.
+
+2. Fact Table Load Logic
+
+  - Looking up dimension keys:
+    For every new encounter in the OLTP database, take the natural IDs (patient_id, provider_id, department_id) and
+    perform a lookup (JOIN) against the corresponding dimension tables to retrieve the correct integer surrogate
+    keys (patient_key, provider_key, etc.). Extract the encounter_date and convert it to a YYYYMMDD integer to use as
+    the date_key.
+
+  - Calculating pre-aggregated metrics:
+    During the ETL pipeline, query the OLTP billing table to sum the claim and allowed amounts for the encounter. Query
+    the junction tables to count the total diagnoses and procedures. Calculate length_of_stay_days by finding the
+    difference between admission and discharge dates. Finally, evaluate the patient's history in the warehouse: if the
+    current admission date falls within 30 days of their last inpatient discharge, set readmission_30_day_flag = 1.
+
+  - Handling missing data:
+    Never use NULLs for dimension foreign keys. If an encounter is missing a provider, assign a default key (e.g., -1).
+    Ensure every dimension table has a row with key -1 mapped to "Unknown" or "Not Applicable".
+
+3. Bridge Table Load Logic
+
+  - Populating bridge_encounter_diagnoses:
+    Extract data from the OLTP encounter_diagnoses table. Look up the new encounter_key from the recently loaded
+    fact_encounters table using the OLTP encounter_id. Look up the diagnosis_key from dim_diagnosis using the
+    icd10_code. Insert the combined integer keys and the sequence number into the bridge table.
+
+  - Populating bridge_encounter_procedures:
+    Extract data from the OLTP encounter_procedures table. Perform the same key lookups for the encounter and the
+    procedure. Format the procedure date into a YYYYMMDD integer to populate the procedure_date_key. Insert the row
+    into the bridge table.
+
+4. Refresh Strategy
+
+  - Load Frequency:
+    Perform a Daily Incremental Load during off-peak hours (e.g., 2:00 AM). Use a "watermark" approach by querying the
+    OLTP tables for any rows where updated_at or created_at is greater than the last successful ETL run. Full refreshes
+    should only be done if the warehouse needs to be rebuilt from scratch or if the data quality is compromised.
+
+  - Handling Late-Arriving Facts:
+    In healthcare, bills often arrive weeks after the patient goes home. Use an "Upsert" or MERGE statement. If an
+    encounter arrives late, insert it. If a new billing record arrives for an encounter that already exists in the
+    warehouse, update the existing fact row to overwrite the total_claim_amount and total_allowed_amount with the new
+    values. If a fact arrives before its associated dimension record (e.g., a new provider), create a "stub" record in
+    the dimension with "Unknown" details, link the fact, and update the dimension stub later when the provider data
+    arrives.
