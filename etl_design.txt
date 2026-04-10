@@ -60,3 +60,7 @@
     values. If a fact arrives before its associated dimension record (e.g., a new provider), create a "stub" record in
     the dimension with "Unknown" details, link the fact, and update the dimension stub later when the provider data
     arrives.
+
+NOTE: The above ETL design will use Idempotent statement as the default for all insert and update operations to ensure
+that if the ETL process is accidentally run multiple times, it will not create duplicate records or corrupt existing
+data. This is crucial for maintaining data integrity in a healthcare setting where accuracy is paramount.
