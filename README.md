@@ -35,3 +35,5 @@ The warehouse design flattens and reorganizes that data into dimensions and fact
 1. Run `01-init.sql` to create the source tables.
 2. Review `etl_design.txt` and other `.txt` files to understand the data and warehouse loading approach.
 3. Extend the model as needed for your own analytics use case.
+
+## Generate data using the `generate_data.ts` script.

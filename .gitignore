@@ -1,0 +1,25 @@
+# JetBrains IDEs (DataGrip, IntelliJ IDEA, etc.)
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Node.js / TypeScript
+node_modules/
+dist/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Generated data files
+data/*.csv
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# OS
+.DS_Store
+Thumbs.db
