@@ -23,6 +23,7 @@ It then transforms that structure into a star schema to make reporting and analy
 
 The source system uses a normalized structure for transactional data.  
 The warehouse design flattens and reorganizes that data into dimensions and facts so it can be queried more efficiently.
+![ER Diagram](er-diagram.png)
 
 ## Notes
 

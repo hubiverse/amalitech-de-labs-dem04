@@ -20,7 +20,7 @@ Tables joined:
 Number of joins: 2
 Performance:
 Execution time: 0.2011 ms
-Estimated rows scanned: 11 rowz
+Estimated rows scanned: 11 row
 Bottleneck Identified:
  The `ANALYZE` output shows a "temporary_table" containing a "filesort", which is then passed to another "filesort".
  The first filesort is required to handle the GROUP BY (because the data isn't naturally ordered by the formatted date
